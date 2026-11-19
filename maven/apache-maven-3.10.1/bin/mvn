@@ -1,0 +1,347 @@
+#!/bin/sh
+
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+# -----------------------------------------------------------------------------
+# Apache Maven Startup Script
+#
+# Environment Variable Prerequisites
+#
+#   JAVA_HOME       Must point at your Java Development Kit installation.
+#   MAVEN_ARGS      (Optional) Arguments passed to Maven before CLI arguments, separated by white space.
+#                   Single or double quotes group a value containing white space.
+#   MAVEN_OPTS      (Optional) Java runtime options used when Maven is executed.
+#   MAVEN_SKIP_RC   (Optional) Flag to disable loading of mavenrc files.
+# -----------------------------------------------------------------------------
+
+if [ -z "$MAVEN_SKIP_RC" ] ; then
+
+  if [ -f /usr/local/etc/mavenrc ] ; then
+    . /usr/local/etc/mavenrc
+  fi
+
+  if [ -f /etc/mavenrc ] ; then
+    . /etc/mavenrc
+  fi
+
+  if [ -f "$HOME/.mavenrc" ] ; then
+    . "$HOME/.mavenrc"
+  fi
+
+fi
+
+# Note on echo vs printf: several POSIX shells (dash and the other Almquist
+# derivatives commonly installed as /bin/sh) expand backslash escapes in echo.
+# Windows paths are full of backslashes, so C:\tmp\build would be printed with a
+# tab in place of \t. Every value that may hold a path is therefore emitted with
+# printf '%s' rather than echo; plain literals may still use echo.
+
+# OS specific support. $var _must_ be set to either true or false.
+# MINGW* matches the MinGW32/MinGW64 shells (e.g. Git Bash, the shell used by
+# "shell: bash" steps of GitHub Actions Windows runners), MSYS* the MSYS2 shell.
+# All of them run on top of a POSIX emulation layer that mangles POSIX paths
+# passed to native (Windows) processes such as the JVM, so paths have to be
+# converted to their native Windows form explicitly.
+cygwin=false;
+mingw=false;
+case "`uname`" in
+  CYGWIN*) cygwin=true;;
+  MINGW*|MSYS*) mingw=true;;
+esac
+
+# Cygwin and MSYS2 both ship cygpath(1), but bail out of the path conversion if
+# it is unexpectedly missing: substituting empty paths would break the launch in
+# a way that is much harder to diagnose than keeping the POSIX paths.
+if $cygwin || $mingw ; then
+  if ! ( \unset -f command; \command -v cygpath ) > /dev/null 2>&1 ; then
+    echo "Warning: cygpath was not found on the PATH, Apache Maven cannot convert paths to the Windows format." >&2
+    echo "Some plugins may misbehave when they receive POSIX paths." >&2
+    cygwin=false
+    mingw=false
+  fi
+fi
+
+# A cygpath(1) from an unrelated POSIX emulation layer (e.g. the one shipped in
+# an Anaconda installation) can be found on the PATH first. It re-roots every
+# POSIX path under its own installation prefix, so all converted values point to
+# non-existing directories and the JVM dies with a bare ClassNotFoundException.
+# cygpath can convert relative paths too, but the current directory is the only
+# path that is known to exist at this point: verify that its Windows form can be
+# found on disk before trusting any of the later conversions.
+if $cygwin || $mingw ; then
+  _cygpath_bin=`( \unset -f command; \command -v cygpath )` || _cygpath_bin=
+  _probe_win=`cygpath --windows "$PWD"` || _probe_win=
+  if [ -z "$_probe_win" ] || [ ! -d "$_probe_win" ] ; then
+    printf '%s\n' "Warning: the cygpath found on the PATH (\"$_cygpath_bin\") does not convert paths to" >&2
+    printf '%s\n' "usable Windows paths (\"$PWD\" converts to \"$_probe_win\", which does not exist)," >&2
+    printf '%s\n' "so Apache Maven cannot convert paths to the Windows format." >&2
+    printf '%s\n' "Some plugins may misbehave when they receive POSIX paths." >&2
+    cygwin=false
+    mingw=false
+  fi
+fi
+
+## resolve links - $0 may be a link to Maven's home
+PRG="$0"
+
+# need this for relative symlinks
+while [ -h "$PRG" ] ; do
+  ls=`ls -ld "$PRG"`
+  link=`expr "$ls" : '.*-> \(.*\)$'`
+  if expr "$link" : '/.*' > /dev/null; then
+    PRG="$link"
+  else
+    PRG="`dirname "$PRG"`/$link"
+  fi
+done
+
+saveddir=`pwd`
+
+MAVEN_HOME=`dirname "$PRG"`/..
+
+# make it fully qualified
+MAVEN_HOME=`cd "$MAVEN_HOME" && pwd`
+
+cd "$saveddir"
+
+# For Cygwin, ensure paths are in Unix format before anything is touched
+if $cygwin ; then
+  [ -n "$MAVEN_HOME" ] &&
+    MAVEN_HOME=`cygpath --unix "$MAVEN_HOME"`
+  [ -n "$JAVA_HOME" ] &&
+    JAVA_HOME=`cygpath --unix "$JAVA_HOME"`
+  [ -n "$CLASSPATH" ] &&
+    CLASSPATH=`cygpath --path --unix "$CLASSPATH"`
+fi
+
+# For MinGW, ensure paths are in Unix format before anything is touched
+if $mingw ; then
+  [ -n "$MAVEN_HOME" ] &&
+    MAVEN_HOME=`(cd "$MAVEN_HOME"; pwd)`
+  [ -n "$JAVA_HOME" ] &&
+    JAVA_HOME=`(cd "$JAVA_HOME"; pwd)`
+  # TODO classpath?
+fi
+
+if [ -z "$JAVA_HOME" ] ; then
+  JAVACMD="`\\unset -f command; \\command -v java`"
+else
+  JAVACMD="$JAVA_HOME/bin/java"
+fi
+
+if [ ! -x "$JAVACMD" ] ; then
+  echo "The JAVA_HOME environment variable is not defined correctly," >&2
+  echo "this environment variable is needed to run this program." >&2
+  exit 1
+fi
+
+CLASSWORLDS_JAR=`echo "${MAVEN_HOME}"/boot/plexus-classworlds-*.jar`
+CLASSWORLDS_LAUNCHER=org.codehaus.plexus.classworlds.launcher.Launcher
+
+# For Cygwin and MinGW, switch paths to Windows format before running java(1)
+if $cygwin || $mingw ; then
+  [ -n "$MAVEN_HOME" ] &&
+    MAVEN_HOME=`cygpath --windows "$MAVEN_HOME"`
+  [ -n "$JAVA_HOME" ] &&
+    JAVA_HOME=`cygpath --windows "$JAVA_HOME"`
+  [ -n "$CLASSPATH" ] &&
+    CLASSPATH=`cygpath --path --windows "$CLASSPATH"`
+  [ -n "$CLASSWORLDS_JAR" ] &&
+    CLASSWORLDS_JAR=`cygpath --windows "$CLASSWORLDS_JAR"`
+fi
+
+# traverses directory structure from process work directory to filesystem root
+# first directory with .mvn subdirectory is considered project base directory
+find_maven_basedir() {
+(
+  basedir=`find_file_argument_basedir "$@"`
+  wdir="${basedir}"
+  while :
+  do
+    if [ -d "$wdir"/.mvn ] ; then
+      basedir=$wdir
+      break
+    fi
+    if [ "$wdir" = '/' ] ; then
+      break
+    fi
+    wdir=`cd "$wdir/.."; pwd`
+  done
+  printf '%s\n' "${basedir}"
+)
+}
+
+find_file_argument_basedir() {
+(
+  basedir=`pwd`
+
+  found_file_switch=0
+  for arg in "$@"; do
+    if [ ${found_file_switch} -eq 1 ]; then
+      if [ -d "${arg}" ]; then
+        basedir=`cd "${arg}" && pwd -P`
+      elif [ -f "${arg}" ]; then
+        basedir=`dirname "${arg}"`
+        basedir=`cd "${basedir}" && pwd -P`
+      fi
+      # If the argument does not exist (e.g. a Cygwin/MSYS path that will be
+      # converted later, or a genuinely missing file), fall back to the current
+      # directory.  The Java layer validates the path and produces the proper
+      # error message when the file is truly absent.
+      break
+    fi
+    if [ "$arg" = "-f" -o "$arg" = "--file" ]; then
+      found_file_switch=1
+    fi
+  done
+  printf '%s\n' "${basedir}"
+)
+}
+
+# concatenates all lines of a file and replaces variables
+concat_lines() {
+  if [ -f "$1" ]; then
+    # First transform line endings to spaces
+    content=$(tr -s '\r\n' ' ' < "$1")
+    # Handle both ${var} and $var formats, only substitute MAVEN_PROJECTBASEDIR
+    echo "$content" | sed -e "s|\${MAVEN_PROJECTBASEDIR}|$MAVEN_PROJECTBASEDIR|g" \
+                         -e "s|\$MAVEN_PROJECTBASEDIR|$MAVEN_PROJECTBASEDIR|g"
+  fi
+}
+
+MAVEN_PROJECTBASEDIR="${MAVEN_BASEDIR:-`find_maven_basedir "$@"`}"
+MAVEN_OPTS="`concat_lines "$MAVEN_PROJECTBASEDIR/.mvn/jvm.config"` $MAVEN_OPTS"
+
+# For Cygwin and MinGW, switch project base directory path to Windows format
+# before executing Maven otherwise this will cause Maven not to consider it.
+if $cygwin || $mingw ; then
+  [ -n "$MAVEN_PROJECTBASEDIR" ] &&
+  MAVEN_PROJECTBASEDIR=`cygpath --windows "$MAVEN_PROJECTBASEDIR"`
+fi
+
+export MAVEN_PROJECTBASEDIR
+
+# Provide a "standardized" way to retrieve the CLI args that will
+# work with both Windows and non-Windows executions.
+MAVEN_CMD_LINE_ARGS="$MAVEN_CONFIG $@"
+export MAVEN_CMD_LINE_ARGS
+
+# Parse MAVEN_ARGS: words are separated by white space, single or double quotes group a
+# word containing white space. Nothing else is interpreted (no backslash, no ${...},
+# no globbing, no command substitution). The words go in front of the user arguments.
+if [ -n "$MAVEN_ARGS" ]; then
+  maven_args_user_count=$#
+  maven_args_rest=$MAVEN_ARGS
+  maven_args_word=
+  maven_args_in_word=false
+  maven_args_quote=
+  maven_args_tab=`printf '\t'`
+  maven_args_nl='
+'
+  while [ -n "$maven_args_rest" ]; do
+    maven_args_tail=${maven_args_rest#?}
+    maven_args_char=${maven_args_rest%"$maven_args_tail"}
+    maven_args_rest=$maven_args_tail
+    if [ -n "$maven_args_quote" ]; then
+      if [ "$maven_args_char" = "$maven_args_quote" ]; then
+        maven_args_quote=
+      else
+        maven_args_word=$maven_args_word$maven_args_char
+      fi
+    else
+      case $maven_args_char in
+        '"' | "'")
+          maven_args_quote=$maven_args_char
+          maven_args_in_word=true
+          ;;
+        ' ' | "$maven_args_tab" | "$maven_args_nl")
+          if [ "$maven_args_in_word" = true ]; then
+            set -- "$@" "$maven_args_word"
+            maven_args_word=
+            maven_args_in_word=false
+          fi
+          ;;
+        *)
+          maven_args_word=$maven_args_word$maven_args_char
+          maven_args_in_word=true
+          ;;
+      esac
+    fi
+  done
+  if [ -n "$maven_args_quote" ]; then
+    echo "Warning: MAVEN_ARGS has an unterminated $maven_args_quote quote, the rest of the value is treated as part of the last word" >&2
+  fi
+  if [ "$maven_args_in_word" = true ]; then
+    set -- "$@" "$maven_args_word"
+  fi
+  while [ "$maven_args_user_count" -gt 0 ]; do
+    set -- "$@" "$1"
+    shift
+    maven_args_user_count=$((maven_args_user_count - 1))
+  done
+fi
+
+# MNG-8056: Under Cygwin, the JVM is a native Windows process and cannot resolve
+# Cygwin-style POSIX paths (e.g. /cygdrive/c/...) directly.  The internal paths
+# (MAVEN_HOME, CLASSWORLDS_CONF, JAVA_HOME, ...) are already converted above, but
+# user-supplied paths passed via -f/--file, -s/--settings, -gs/--global-settings,
+# -t/--toolchains, -gt/--global-toolchains and -l/--log-file reach the JVM
+# unconverted.
+# The loop below rewrites only those argument values that begin with '/' (absolute
+# POSIX paths); relative paths and already-Windows paths are left unchanged.
+# MinGW/MSYS2 perform automatic path mangling, so the fix is Cygwin-only.
+if $cygwin ; then
+  _np=false
+  _count=$#
+  while [ $_count -gt 0 ]; do
+    _a="$1"
+    shift
+    if $_np; then
+      case "$_a" in
+        /*) _a=`cygpath --windows "$_a"` ;;
+      esac
+      _np=false
+    else
+      case "$_a" in
+        -f|--file|-s|--settings|-gs|--global-settings|-t|--toolchains|-gt|--global-toolchains|-l|--log-file)
+          _np=true ;;
+        --file=/*|--settings=/*|--global-settings=/*|--toolchains=/*|--global-toolchains=/*|--log-file=/*)
+          _flag="${_a%%=*}"
+          _path="${_a#*=}"
+          _a="${_flag}=`cygpath --windows "${_path}"`"
+          ;;
+      esac
+    fi
+    set -- "$@" "$_a"
+    _count=$(( _count - 1 ))
+  done
+fi
+
+if [ -n "$MAVEN_DEBUG_SCRIPT" ]; then
+  echo "[DEBUG] Launching JVM with arguments:" >&2
+  printf ' "%s"' "$@" >&2; echo >&2
+fi
+
+exec "$JAVACMD" \
+  $MAVEN_OPTS \
+  $MAVEN_DEBUG_OPTS \
+  -classpath "${CLASSWORLDS_JAR}" \
+  "-Dclassworlds.conf=${MAVEN_HOME}/bin/m2.conf" \
+  "-Dmaven.home=${MAVEN_HOME}" \
+  "-Dmaven.multiModuleProjectDirectory=${MAVEN_PROJECTBASEDIR}" \
+  ${CLASSWORLDS_LAUNCHER} "$@"
